@@ -11,6 +11,32 @@ type FirewallSecurityGroup struct {
 	Rules   []*FirewallRule `json:"rules,omitempty"`
 }
 
+func (cl *Cluster) FWGroups() (groups []*FirewallSecurityGroup, err error) {
+	err = cl.client.Get("/cluster/firewall/groups", &groups)
+
+	if nil == err {
+		for _, g := range groups {
+			g.client = cl.client
+		}
+	}
+	return
+}
+
+func (cl *Cluster) FWGroup(name string) (group *FirewallSecurityGroup, err error) {
+	group = &FirewallSecurityGroup{}
+	err = cl.client.Get(fmt.Sprintf("/cluster/firewall/groups/%s", name), &group.Rules)
+	if nil == err {
+		group.Group = name
+		group.client = cl.client
+	}
+	return
+}
+
+func (cl *Cluster) NewFWGroup(group *FirewallSecurityGroup) (err error) {
+	err = cl.client.Post(fmt.Sprintf("/cluster/firewall/groups"), group, &group)
+	return
+}
+
 func (g *FirewallSecurityGroup) GetRules() (rules []*FirewallRule, err error) {
 	err = g.client.Get(fmt.Sprintf("/cluster/firewall/groups/%s", g.Group), &g.Rules)
 	rules = g.Rules
@@ -52,30 +78,4 @@ type FirewallRule struct {
 
 func (r *FirewallRule) IsEnable() bool {
 	return 1 == r.Enable
-}
-
-func (cl *Cluster) FWGroups() (groups []*FirewallSecurityGroup, err error) {
-	err = cl.client.Get("/cluster/firewall/groups", &groups)
-
-	if nil == err {
-		for _, g := range groups {
-			g.client = cl.client
-		}
-	}
-	return
-}
-
-func (cl *Cluster) FWGroup(name string) (group *FirewallSecurityGroup, err error) {
-	group = &FirewallSecurityGroup{}
-	err = cl.client.Get(fmt.Sprintf("/cluster/firewall/groups/%s", name), &group.Rules)
-	if nil == err {
-		group.Group = name
-		group.client = cl.client
-	}
-	return
-}
-
-func (cl *Cluster) NewFWGroup(group *FirewallSecurityGroup) (err error) {
-	err = cl.client.Post(fmt.Sprintf("/cluster/firewall/groups"), group, &group)
-	return
 }
