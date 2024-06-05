@@ -2,6 +2,7 @@ package pve
 
 import (
 	"fmt"
+	"github.com/hilaoyu/go-utils/utilStr"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -83,7 +84,7 @@ type VirtualMachineConfig struct {
 	OSType  string
 	SMBios1 string
 	SCSIHW  string
-	Net0    string
+
 	Digest  string
 	Meta    string
 	SCSI0   string
@@ -125,16 +126,17 @@ type VirtualMachineConfig struct {
 	SATA8 string
 	SATA9 string
 
-	Nets map[string]string
-	Net1 string
-	Net2 string
-	Net3 string
-	Net4 string
-	Net5 string
-	Net6 string
-	Net7 string
-	Net8 string
-	Net9 string
+	Nets map[string]*VirtualMachineNetwork
+	Net0 *VirtualMachineNetwork
+	Net1 *VirtualMachineNetwork
+	Net2 *VirtualMachineNetwork
+	Net3 *VirtualMachineNetwork
+	Net4 *VirtualMachineNetwork
+	Net5 *VirtualMachineNetwork
+	Net6 *VirtualMachineNetwork
+	Net7 *VirtualMachineNetwork
+	Net8 *VirtualMachineNetwork
+	Net9 *VirtualMachineNetwork
 
 	Unuseds map[string]string
 	Unused0 string
@@ -153,6 +155,69 @@ type VirtualMachineOptions []*VirtualMachineOption
 type VirtualMachineOption struct {
 	Name  string
 	Value interface{}
+}
+
+type VirtualMachineNetwork struct {
+	Name     string `json:"name,omitempty"`
+	Type     string `json:"type,omitempty"`
+	Mac      string `json:"mac,omitempty"`
+	Bridge   string `json:"bridge,omitempty"`
+	Firewall int    `json:"firewall,omitempty"`
+	LinkDown int    `json:"link_down,omitempty"`
+	Mtu      int    `json:"mtu,omitempty"`
+	Queues   int    `json:"queues,omitempty"`
+	Rate     int    `json:"rate,omitempty"`
+}
+
+func (vmn *VirtualMachineNetwork) UnmarshalJSON(b []byte) error {
+
+	netConfig := string(b)
+	netConfig = strings.Trim(netConfig, "\"")
+	if "" == netConfig {
+		return nil
+	}
+	regMacAddress, _ := regexp.Compile("([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})")
+	macOrg := regMacAddress.FindString(netConfig)
+	mac := strings.ToUpper(strings.ReplaceAll(macOrg, "-", ":"))
+
+	vmn.Mac = mac
+	items := strings.Split(netConfig, ",")
+	for _, item := range items {
+
+		switch {
+		case strings.HasSuffix(item, "="+macOrg):
+			vmn.Type = utilStr.Before(item, "="+macOrg)
+			break
+		case strings.HasPrefix(item, "bridge="):
+			vmn.Bridge = utilStr.After(item, "bridge=")
+			break
+
+		case strings.HasPrefix(item, "firewall="):
+			firewall, _ := strconv.Atoi(utilStr.After(item, "firewall="))
+			vmn.Firewall = firewall
+			break
+		case strings.HasPrefix(item, "link_down="):
+			linkDown, _ := strconv.Atoi(utilStr.After(item, "link_down="))
+			vmn.LinkDown = linkDown
+			break
+		case strings.HasPrefix(item, "mtu="):
+			mtu, _ := strconv.Atoi(utilStr.After(item, "mtu="))
+			vmn.LinkDown = mtu
+			break
+		case strings.HasPrefix(item, "queues="):
+			queues, _ := strconv.Atoi(utilStr.After(item, "queues="))
+			vmn.Queues = queues
+			break
+		case strings.HasPrefix(item, "rate="):
+			rate, _ := strconv.Atoi(utilStr.After(item, "rate="))
+			vmn.Rate = rate
+			break
+
+		default:
+			break
+		}
+	}
+	return nil
 }
 
 func (vmc *VirtualMachineConfig) MergeIDEs() map[string]string {
@@ -219,21 +284,23 @@ func (vmc *VirtualMachineConfig) MergeSATAs() map[string]string {
 	}
 	return vmc.SATAs
 }
-func (vmc *VirtualMachineConfig) MergeNets() map[string]string {
+func (vmc *VirtualMachineConfig) MergeNets() map[string]*VirtualMachineNetwork {
 	if nil == vmc.Nets {
-		vmc.Nets = map[string]string{}
+		vmc.Nets = map[string]*VirtualMachineNetwork{}
 		t := reflect.TypeOf(*vmc)
 		v := reflect.ValueOf(*vmc)
 		count := v.NumField()
 
 		for i := 0; i < count; i++ {
 			fn := t.Field(i).Name
-			fv := v.Field(i).String()
-			//fmt.Println(fn, fv)
-			if "" == fv {
-				continue
-			}
+
 			if vmConfigRegexpNet.MatchString(fn) {
+				fv, _ := v.Field(i).Interface().(*VirtualMachineNetwork)
+				//fmt.Println(fn, fv)
+				if nil == fv {
+					continue
+				}
+				fv.Name = strings.ToLower(fn)
 				vmc.Nets[strings.ToLower(fn)] = fv
 			}
 		}
@@ -275,6 +342,13 @@ func (v *VirtualMachine) Config(options ...VirtualMachineOption) (*Task, error) 
 	err := v.client.Post(fmt.Sprintf("/nodes/%s/qemu/%d/config", v.Node, v.VMID), data, &upid)
 	return NewTask(upid, v.client), err
 }
+func (v *VirtualMachine) ConfigLoad() (err error) {
+	if nil == v.VirtualMachineConfig {
+		err = v.client.Get(fmt.Sprintf("/nodes/%s/qemu/%d/config", v.Node, v.VMID), &v.VirtualMachineConfig)
+	}
+
+	return
+}
 
 func (v *VirtualMachine) TermProxy() (vnc *VNC, err error) {
 	return vnc, v.client.Post(fmt.Sprintf("/nodes/%s/qemu/%d/termproxy", v.Node, v.VMID), nil, &vnc)
@@ -307,7 +381,11 @@ func (v *VirtualMachine) VNCWebSocket(vnc *VNC) (chan string, chan string, chan 
 }
 
 func (v *VirtualMachine) IsRunning() bool {
-	return v.Status == StatusVirtualMachineRunning && v.QMPStatus == StatusVirtualMachineRunning
+	status := v.Status == StatusVirtualMachineRunning
+	if "" != v.QMPStatus {
+		status = status && v.QMPStatus == StatusVirtualMachineRunning
+	}
+	return status
 }
 
 func (v *VirtualMachine) Start() (*Task, error) {
@@ -320,7 +398,11 @@ func (v *VirtualMachine) Start() (*Task, error) {
 }
 
 func (v *VirtualMachine) IsStopped() bool {
-	return v.Status == StatusVirtualMachineStopped && v.QMPStatus == StatusVirtualMachineStopped
+	status := v.Status == StatusVirtualMachineStopped
+	if "" != v.QMPStatus {
+		status = status && v.QMPStatus == StatusVirtualMachineStopped
+	}
+	return status
 }
 
 func (v *VirtualMachine) Reset() (task *Task, err error) {
@@ -351,7 +433,11 @@ func (v *VirtualMachine) Stop() (task *Task, err error) {
 }
 
 func (v *VirtualMachine) IsPaused() bool {
-	return v.Status == StatusVirtualMachineRunning && v.QMPStatus == StatusVirtualMachinePaused
+	status := v.Status == StatusVirtualMachineRunning
+	if "" != v.QMPStatus {
+		status = status && v.QMPStatus == StatusVirtualMachinePaused
+	}
+	return status
 }
 
 func (v *VirtualMachine) Pause() (task *Task, err error) {
