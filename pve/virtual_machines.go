@@ -78,7 +78,7 @@ type VirtualMachine struct {
 type VirtualMachineConfig struct {
 	Cores   int
 	Numa    int
-	Memory  int
+	Memory  StringOrUint64
 	Sockets int
 	IDE2    string
 	OSType  string
