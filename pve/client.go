@@ -13,7 +13,6 @@ import (
 	"github.com/hilaoyu/go-utils/utilLogger"
 	"github.com/hilaoyu/go-utils/utils"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -142,8 +141,9 @@ func (c *Client) Req(method, path string, data []byte, v interface{}) error {
 	if body != nil {
 		req.Header.Add("Content-Type", "application/json")
 	}
-
-	c.authHeaders(&req.Header)
+	if path != (c.baseURL + "/access/ticket") {
+		c.authHeaders(&req.Header)
+	}
 
 	res, err := c.httpClient.Do(req)
 	if err != nil {
@@ -151,7 +151,7 @@ func (c *Client) Req(method, path string, data []byte, v interface{}) error {
 	}
 	defer res.Body.Close()
 
-	if res.StatusCode == http.StatusUnauthorized {
+	if res.StatusCode == http.StatusUnauthorized && path != (c.baseURL+"/access/ticket") {
 		if c.credentials != nil && c.session == nil {
 			// credentials passed but no session started, try a login and retry the request
 			if _, err := c.Ticket(c.credentials); err != nil {
@@ -267,7 +267,7 @@ func (c *Client) handleResponse(res *http.Response, v interface{}) error {
 		return errors.New(res.Status)
 	}
 
-	body, err := ioutil.ReadAll(res.Body)
+	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		return err
 	}
@@ -454,6 +454,88 @@ func (c *Client) VNCWebSocket(path string, vnc *VNC) (chan string, chan string, 
 	return send, recv, errors, closer, nil
 }
 
+func (c *Client) TermProxyWebsocketServeHTTP(path string, vnc *VNC, w http.ResponseWriter, r *http.Request, responseHeader http.Header) (err error) {
+
+	fmt.Println(c.credentials)
+	if "" == c.credentials.Username && "" == c.credentials.Password {
+		err = fmt.Errorf("term not support token auth")
+		return
+	}
+
+	upgrader := websocket.Upgrader{}
+	websocketServe, err := upgrader.Upgrade(w, r, responseHeader)
+	if err != nil {
+		err = fmt.Errorf("upgrade http to websocket err: %+v", err)
+		fmt.Println(err)
+		return
+	}
+
+	if strings.HasPrefix(path, "/") {
+		path = strings.Replace(c.baseURL, "https://", "wss://", 1) + path
+	}
+
+	var tlsConfig *tls.Config
+	transport := c.httpClient.Transport.(*http.Transport)
+	if transport != nil {
+		tlsConfig = transport.TLSClientConfig
+	}
+	c.logger.DebugF("connecting to websocket: %s", path)
+	dialer := &websocket.Dialer{
+		Proxy:            http.ProxyFromEnvironment,
+		HandshakeTimeout: 30 * time.Second,
+		TLSClientConfig:  tlsConfig,
+		ReadBufferSize:   1024 * 10,
+		WriteBufferSize:  1024 * 1024 * 4,
+	}
+
+	dialerHeaders := http.Header{}
+	c.authHeaders(&dialerHeaders)
+
+	pveVncConn, _, err := dialer.Dial(path, dialerHeaders)
+
+	if err != nil {
+		err = fmt.Errorf("connect to pve err: %+v", err)
+		websocketServe.Close()
+		return
+	}
+
+	defer func() {
+		pveVncConn.Close()
+		websocketServe.Close()
+	}()
+
+	authMsg := c.credentials.Username + ":" + c.credentials.Password + "\n"
+
+	err = pveVncConn.WriteMessage(websocket.TextMessage, []byte(authMsg))
+	if err != nil {
+		return
+	}
+
+	go func() {
+		for {
+			_, err = bufCopy.Copy(websocketServe.NetConn(), pveVncConn.NetConn())
+			if err != nil {
+				err = fmt.Errorf("buf copy pve to websocket err: %+v", err)
+				pveVncConn.Close()
+				websocketServe.Close()
+				return
+			}
+		}
+	}()
+
+	for {
+		_, err = bufCopy.Copy(pveVncConn.NetConn(), websocketServe.NetConn())
+		if err != nil {
+			err = fmt.Errorf("buf copy websocket to pve err: %+v", err)
+			pveVncConn.Close()
+			websocketServe.Close()
+			return
+		}
+	}
+
+	return
+}
+
 func (c *Client) VNCProxyWebsocketServeHTTP(path string, vnc *VNC, w http.ResponseWriter, r *http.Request, responseHeader http.Header) (err error) {
 	upgrader := websocket.Upgrader{}
 	websocketServe, err := upgrader.Upgrade(w, r, responseHeader)
@@ -496,6 +578,7 @@ func (c *Client) VNCProxyWebsocketServeHTTP(path string, vnc *VNC, w http.Respon
 
 	var msgType int
 	var msg []byte
+
 	msgType, msg, err = pveVncConn.ReadMessage()
 	if nil != err {
 		err = fmt.Errorf("read pve rfb message err: %+v", err)
@@ -573,7 +656,7 @@ func (c *Client) VNCProxyWebsocketServeHTTP(path string, vnc *VNC, w http.Respon
 	}()
 
 	for {
-		_, err = bufCopy.Copy(pveVncConn.UnderlyingConn(), websocketServe.UnderlyingConn())
+		_, err = bufCopy.Copy(pveVncConn.NetConn(), websocketServe.NetConn())
 		if err != nil {
 			err = fmt.Errorf("buf copy websocket to pve err: %+v", err)
 			pveVncConn.Close()

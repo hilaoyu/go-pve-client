@@ -354,6 +354,18 @@ func (v *VirtualMachine) TermProxy() (vnc *VNC, err error) {
 	return vnc, v.client.Post(fmt.Sprintf("/nodes/%s/qemu/%d/termproxy", v.Node, v.VMID), nil, &vnc)
 }
 
+func (v *VirtualMachine) TermProxyWebsocketServeHTTP(w http.ResponseWriter, r *http.Request, responseHeader http.Header) (err error) {
+	vnc, err := v.TermProxy()
+	if nil != err {
+		return
+	}
+
+	path := fmt.Sprintf("/nodes/%s/qemu/%d/vncwebsocket?port=%d&vncticket=%s",
+		v.Node, v.VMID, vnc.Port, url.QueryEscape(vnc.Ticket))
+
+	return v.client.TermProxyWebsocketServeHTTP(path, vnc, w, r, responseHeader)
+}
+
 func (v *VirtualMachine) VncProxy() (vnc *VNC, err error) {
 	return vnc, v.client.Post(fmt.Sprintf("/nodes/%s/qemu/%d/vncproxy", v.Node, v.VMID), map[string]interface{}{"websocket": true, "generate-password": false}, &vnc)
 }
