@@ -167,6 +167,8 @@ type VirtualMachineNetwork struct {
 	Mtu      int    `json:"mtu,omitempty"`
 	Queues   int    `json:"queues,omitempty"`
 	Rate     int    `json:"rate,omitempty"`
+	Tag      int    `json:"tag,omitempty"`
+	Trunks   string `json:"trunks,omitempty"`
 }
 
 func (vmn *VirtualMachineNetwork) UnmarshalJSON(b []byte) error {
@@ -211,6 +213,14 @@ func (vmn *VirtualMachineNetwork) UnmarshalJSON(b []byte) error {
 		case strings.HasPrefix(item, "rate="):
 			rate, _ := strconv.Atoi(utilStr.After(item, "rate="))
 			vmn.Rate = rate
+			break
+		case strings.HasPrefix(item, "tag="):
+			tag, _ := strconv.Atoi(utilStr.After(item, "rate="))
+			vmn.Tag = tag
+			break
+
+		case strings.HasPrefix(item, "trunks="):
+			vmn.Trunks = utilStr.After(item, "trunks=")
 			break
 
 		default:

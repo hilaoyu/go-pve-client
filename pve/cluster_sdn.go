@@ -43,7 +43,7 @@ func (cl *Cluster) SdnVNetsGet() (vNets []*SdnVNet, err error) {
 	return
 }
 func (cl *Cluster) SdnVNetAdd(vNet *SdnVNet) (err error) {
-	err = cl.client.Post("/cluster/sdn/vnets", vNet, &vNet)
+	err = cl.client.Post("/cluster/sdn/vnets", vNet, nil)
 
 	if nil != err {
 		return
@@ -70,7 +70,7 @@ func (cl *Cluster) SdnVNetUpdate(vNet *SdnVNet) (err error) {
 	return
 }
 func (cl *Cluster) SdnVNetDelete(vNet *SdnVNet) (err error) {
-	err = cl.client.Delete(fmt.Sprintf("/cluster/sdn/vnets/%s", vNet.Vnet), &vNet)
+	err = cl.client.Delete(fmt.Sprintf("/cluster/sdn/vnets/%s", vNet.Vnet), nil)
 
 	if nil != err {
 		return
