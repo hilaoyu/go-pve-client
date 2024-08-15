@@ -46,6 +46,7 @@ type AgentExecResult struct {
 type AgentExecStatusResult struct {
 	Exited   int    `json:"exited,omitempty"`
 	OutData  string `json:"out-data,omitempty"`
+	ErrData  string `json:"err-data,omitempty"`
 	Exitcode int    `json:"exitcode,omitempty"`
 }
 
@@ -188,6 +189,12 @@ func (v *VirtualMachine) AgentExecSync(command *AgentExecCommand, timeoutSeconds
 		result, _ = v.AgentExecStatus(pid)
 		if 1 == result.Exited {
 			output = result.OutData
+			if "" != result.ErrData {
+				if "" != output {
+					output += " ;; "
+				}
+				output += result.ErrData
+			}
 			if 0 != result.Exitcode {
 				err = fmt.Errorf("执行状态有错误,code: %d", result.Exitcode)
 			}
