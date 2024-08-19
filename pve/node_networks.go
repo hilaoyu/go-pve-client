@@ -38,6 +38,18 @@ type NodeNetwork struct {
 	Priority int    `json:"priority,omitempty"`
 }
 
+func (nw *NodeNetwork) Update() (task *Task, err error) {
+	var upid string
+	if "" == nw.Iface {
+		return
+	}
+	err = nw.client.Put(fmt.Sprintf("/nodes/%s/network/%s", nw.Node, nw.Iface), nw, &upid)
+	if err != nil {
+		return
+	}
+
+	return nw.NodeApi.NetworkReload()
+}
 func (nw *NodeNetwork) Delete() (task *Task, err error) {
 	var upid string
 	if "" == nw.Iface {
