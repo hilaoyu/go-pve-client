@@ -2,6 +2,7 @@ package pve
 
 import (
 	"fmt"
+	"github.com/hilaoyu/go-utils/utilFile"
 	"github.com/hilaoyu/go-utils/utilStr"
 	"net/http"
 	"net/url"
@@ -26,11 +27,11 @@ var (
 )
 
 func init() {
-	vmConfigRegexpIDE, _ = regexp.Compile("^IDE[\\d]+$")
-	vmConfigRegexpSCSI, _ = regexp.Compile("^SCSI[\\d]+$")
-	vmConfigRegexpSATA, _ = regexp.Compile("^SATAIDE[\\d]+$")
-	vmConfigRegexpNet, _ = regexp.Compile("^Net[\\d]+$")
-	vmConfigRegexpUnused, _ = regexp.Compile("^Unused[\\d]+$")
+	vmConfigRegexpIDE, _ = regexp.Compile("(?i:^IDE)[\\d]+$")
+	vmConfigRegexpSCSI, _ = regexp.Compile("(?i:^SCSI)[\\d]+$")
+	vmConfigRegexpSATA, _ = regexp.Compile("(?i:^SATA)[\\d]+$")
+	vmConfigRegexpNet, _ = regexp.Compile("(?i:^Net)[\\d]+$")
+	vmConfigRegexpUnused, _ = regexp.Compile("(?i:^Unused)[\\d]+$")
 }
 
 type IsTemplate bool
@@ -80,51 +81,51 @@ type VirtualMachineConfig struct {
 	Numa    int
 	Memory  StringOrUint64
 	Sockets int
-	IDE2    string
 	OSType  string
 	SMBios1 string
 	SCSIHW  string
 
 	Digest  string
 	Meta    string
-	SCSI0   string
 	Boot    string
 	VMGenID string
 	Name    string
 
-	IDEs map[string]string
-	IDE0 string
-	IDE1 string
-	IDE3 string
-	IDE4 string
-	IDE5 string
-	IDE6 string
-	IDE7 string
-	IDE8 string
-	IDE9 string
+	IDEs map[string]*VirtualMachineDisk
+	IDE0 *VirtualMachineDisk
+	IDE1 *VirtualMachineDisk
+	IDE2 *VirtualMachineDisk
+	IDE3 *VirtualMachineDisk
+	IDE4 *VirtualMachineDisk
+	IDE5 *VirtualMachineDisk
+	IDE6 *VirtualMachineDisk
+	IDE7 *VirtualMachineDisk
+	IDE8 *VirtualMachineDisk
+	IDE9 *VirtualMachineDisk
 
-	SCSIs map[string]string
-	SCSI1 string
-	SCSI2 string
-	SCSI3 string
-	SCSI4 string
-	SCSI5 string
-	SCSI6 string
-	SCSI7 string
-	SCSI8 string
-	SCSI9 string
+	SCSIs map[string]*VirtualMachineDisk
+	SCSI0 *VirtualMachineDisk
+	SCSI1 *VirtualMachineDisk
+	SCSI2 *VirtualMachineDisk
+	SCSI3 *VirtualMachineDisk
+	SCSI4 *VirtualMachineDisk
+	SCSI5 *VirtualMachineDisk
+	SCSI6 *VirtualMachineDisk
+	SCSI7 *VirtualMachineDisk
+	SCSI8 *VirtualMachineDisk
+	SCSI9 *VirtualMachineDisk
 
-	SATAs map[string]string
-	SATA0 string
-	SATA1 string
-	SATA2 string
-	SATA3 string
-	SATA4 string
-	SATA5 string
-	SATA6 string
-	SATA7 string
-	SATA8 string
-	SATA9 string
+	SATAs map[string]*VirtualMachineDisk
+	SATA0 *VirtualMachineDisk
+	SATA1 *VirtualMachineDisk
+	SATA2 *VirtualMachineDisk
+	SATA3 *VirtualMachineDisk
+	SATA4 *VirtualMachineDisk
+	SATA5 *VirtualMachineDisk
+	SATA6 *VirtualMachineDisk
+	SATA7 *VirtualMachineDisk
+	SATA8 *VirtualMachineDisk
+	SATA9 *VirtualMachineDisk
 
 	Nets map[string]*VirtualMachineNetwork
 	Net0 *VirtualMachineNetwork
@@ -138,17 +139,17 @@ type VirtualMachineConfig struct {
 	Net8 *VirtualMachineNetwork
 	Net9 *VirtualMachineNetwork
 
-	Unuseds map[string]string
-	Unused0 string
-	Unused1 string
-	Unused2 string
-	Unused3 string
-	Unused4 string
-	Unused5 string
-	Unused6 string
-	Unused7 string
-	Unused8 string
-	Unused9 string
+	Unuseds map[string]*VirtualMachineDisk
+	Unused0 *VirtualMachineDisk
+	Unused1 *VirtualMachineDisk
+	Unused2 *VirtualMachineDisk
+	Unused3 *VirtualMachineDisk
+	Unused4 *VirtualMachineDisk
+	Unused5 *VirtualMachineDisk
+	Unused6 *VirtualMachineDisk
+	Unused7 *VirtualMachineDisk
+	Unused8 *VirtualMachineDisk
+	Unused9 *VirtualMachineDisk
 }
 
 type VirtualMachineOptions []*VirtualMachineOption
@@ -230,42 +231,46 @@ func (vmn *VirtualMachineNetwork) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (vmc *VirtualMachineConfig) MergeIDEs() map[string]string {
+func (vmc *VirtualMachineConfig) MergeIDEs() map[string]*VirtualMachineDisk {
 	if nil == vmc.IDEs {
-		vmc.IDEs = map[string]string{}
+		vmc.IDEs = map[string]*VirtualMachineDisk{}
 		t := reflect.TypeOf(*vmc)
 		v := reflect.ValueOf(*vmc)
 		count := v.NumField()
 
 		for i := 0; i < count; i++ {
 			fn := t.Field(i).Name
-			fv := v.Field(i).String()
-			//fmt.Println(fn, fv)
-			if "" == fv {
-				continue
-			}
+
 			if vmConfigRegexpIDE.MatchString(fn) {
+				fv, _ := v.Field(i).Interface().(*VirtualMachineDisk)
+				//fmt.Println(fn, fv)
+				if nil == fv {
+					continue
+				}
+				fv.Name = strings.ToLower(fn)
 				vmc.IDEs[strings.ToLower(fn)] = fv
 			}
 		}
 	}
 	return vmc.IDEs
 }
-func (vmc *VirtualMachineConfig) MergeSCSIs() map[string]string {
+func (vmc *VirtualMachineConfig) MergeSCSIs() map[string]*VirtualMachineDisk {
 	if nil == vmc.SCSIs {
-		vmc.SCSIs = map[string]string{}
+		vmc.SCSIs = map[string]*VirtualMachineDisk{}
 		t := reflect.TypeOf(*vmc)
 		v := reflect.ValueOf(*vmc)
 		count := v.NumField()
 
 		for i := 0; i < count; i++ {
 			fn := t.Field(i).Name
-			fv := v.Field(i).String()
-			//fmt.Println(fn, fv)
-			if "" == fv {
-				continue
-			}
+
 			if vmConfigRegexpSCSI.MatchString(fn) {
+				fv, _ := v.Field(i).Interface().(*VirtualMachineDisk)
+				//fmt.Println(fn, fv)
+				if nil == fv {
+					continue
+				}
+				fv.Name = strings.ToLower(fn)
 				vmc.SCSIs[strings.ToLower(fn)] = fv
 			}
 		}
@@ -273,27 +278,53 @@ func (vmc *VirtualMachineConfig) MergeSCSIs() map[string]string {
 	return vmc.SCSIs
 }
 
-func (vmc *VirtualMachineConfig) MergeSATAs() map[string]string {
+func (vmc *VirtualMachineConfig) MergeSATAs() map[string]*VirtualMachineDisk {
 	if nil == vmc.SATAs {
-		vmc.SATAs = map[string]string{}
+		vmc.SATAs = map[string]*VirtualMachineDisk{}
 		t := reflect.TypeOf(*vmc)
 		v := reflect.ValueOf(*vmc)
 		count := v.NumField()
 
 		for i := 0; i < count; i++ {
 			fn := t.Field(i).Name
-			fv := v.Field(i).String()
-			//fmt.Println(fn, fv)
-			if "" == fv {
-				continue
-			}
+
 			if vmConfigRegexpSATA.MatchString(fn) {
+				fv, _ := v.Field(i).Interface().(*VirtualMachineDisk)
+				//fmt.Println(fn, fv)
+				if nil == fv {
+					continue
+				}
+				fv.Name = strings.ToLower(fn)
 				vmc.SATAs[strings.ToLower(fn)] = fv
 			}
 		}
 	}
 	return vmc.SATAs
 }
+func (vmc *VirtualMachineConfig) MergeUnuseds() map[string]*VirtualMachineDisk {
+	if nil == vmc.Unuseds {
+		vmc.Unuseds = map[string]*VirtualMachineDisk{}
+		t := reflect.TypeOf(*vmc)
+		v := reflect.ValueOf(*vmc)
+		count := v.NumField()
+
+		for i := 0; i < count; i++ {
+			fn := t.Field(i).Name
+
+			if vmConfigRegexpUnused.MatchString(fn) {
+				fv, _ := v.Field(i).Interface().(*VirtualMachineDisk)
+				//fmt.Println(fn, fv)
+				if nil == fv {
+					continue
+				}
+				fv.Name = strings.ToLower(fn)
+				vmc.Unuseds[strings.ToLower(fn)] = fv
+			}
+		}
+	}
+	return vmc.Unuseds
+}
+
 func (vmc *VirtualMachineConfig) MergeNets() map[string]*VirtualMachineNetwork {
 	if nil == vmc.Nets {
 		vmc.Nets = map[string]*VirtualMachineNetwork{}
@@ -317,26 +348,122 @@ func (vmc *VirtualMachineConfig) MergeNets() map[string]*VirtualMachineNetwork {
 	}
 	return vmc.Nets
 }
-func (vmc *VirtualMachineConfig) MergeUnuseds() map[string]string {
-	if nil == vmc.Unuseds {
-		vmc.Unuseds = map[string]string{}
-		t := reflect.TypeOf(*vmc)
-		v := reflect.ValueOf(*vmc)
-		count := v.NumField()
 
-		for i := 0; i < count; i++ {
-			fn := t.Field(i).Name
-			fv := v.Field(i).String()
-			//fmt.Println(fn, fv)
-			if "" == fv {
-				continue
-			}
-			if vmConfigRegexpUnused.MatchString(fn) {
-				vmc.Unuseds[strings.ToLower(fn)] = fv
-			}
+type VirtualMachineDisk struct {
+	Name      string `json:"name,omitempty"`
+	Storage   string `json:"storage,omitempty"`
+	File      string `json:"file,omitempty"`
+	Aio       string `json:"aio,omitempty"`
+	Cache     string `json:"cache,omitempty"`
+	Discard   string `json:"discard,omitempty"`
+	IoThread  int    `json:"iothread,omitempty"`
+	Replicate int    `json:"replicate,omitempty"`
+	Ro        int    `json:"ro,omitempty"`
+	Backup    int    `json:"backup,omitempty"`
+	SizeGb    int64  `json:"size_gb,omitempty"`
+	Ssd       int    `json:"ssd,omitempty"`
+	Media     string `json:"media,omitempty"`
+	Format    string `json:"format,omitempty"`
+}
+
+func (vmd *VirtualMachineDisk) UnmarshalJSON(b []byte) error {
+
+	conf := string(b)
+	conf = strings.Trim(conf, "\"")
+	if "" == conf {
+		return nil
+	}
+	regDiskFile := regexp.MustCompile(`([0-9A-Za-z_-]+):([0-9A-Za-z_\.\\/-]+)`)
+	ret := regDiskFile.FindStringSubmatch(conf)
+	if len(ret) >= 3 {
+		vmd.Storage = ret[1]
+		vmd.File = ret[2]
+	}
+
+	items := strings.Split(conf, ",")
+	for _, item := range items {
+
+		switch {
+		case strings.HasPrefix(item, "aio="):
+			vmd.Aio = utilStr.After(item, "aio=")
+			break
+		case strings.HasPrefix(item, "cache="):
+			vmd.Cache = utilStr.After(item, "cache=")
+			break
+		case strings.HasPrefix(item, "discard="):
+			vmd.Discard = utilStr.After(item, "discard=")
+			break
+		case strings.HasPrefix(item, "media="):
+			vmd.Media = utilStr.After(item, "media=")
+			break
+		case strings.HasPrefix(item, "format="):
+			vmd.Format = utilStr.After(item, "format=")
+			break
+
+		case strings.HasPrefix(item, "iothread="):
+			thread, _ := strconv.Atoi(utilStr.After(item, "iothread="))
+			vmd.IoThread = thread
+			break
+		case strings.HasPrefix(item, "replicate="):
+			replicate, _ := strconv.Atoi(utilStr.After(item, "replicate="))
+			vmd.Replicate = replicate
+			break
+		case strings.HasPrefix(item, "ro="):
+			ro, _ := strconv.Atoi(utilStr.After(item, "ro="))
+			vmd.Ro = ro
+			break
+		case strings.HasPrefix(item, "backup="):
+			backup, _ := strconv.Atoi(utilStr.After(item, "backup="))
+			vmd.Backup = backup
+			break
+		case strings.HasPrefix(item, "ssd="):
+			ssd, _ := strconv.Atoi(utilStr.After(item, "ssd="))
+			vmd.Ssd = ssd
+			break
+		case strings.HasPrefix(item, "size="):
+			size, _ := utilFile.SizeStringToNumber(utilStr.After(item, "size="), "g")
+			vmd.SizeGb = size
+			break
+
+		default:
+			break
 		}
 	}
-	return vmc.Unuseds
+	return nil
+}
+func (vmd *VirtualMachineDisk) SourcePath() string {
+	return fmt.Sprintf("%s:%s", vmd.Storage, vmd.File)
+}
+func (vmd *VirtualMachineDisk) ToConfigOptions() (options []string) {
+	if "" != vmd.Aio {
+		options = append(options, fmt.Sprintf("aio=%s", vmd.Aio))
+	}
+	if "" != vmd.Cache {
+		options = append(options, fmt.Sprintf("cache=%s", vmd.Cache))
+	}
+	if "" != vmd.Discard {
+		options = append(options, fmt.Sprintf("discard=%s", vmd.Discard))
+	}
+	if "" != vmd.Media {
+		options = append(options, fmt.Sprintf("media=%s", vmd.Media))
+	}
+	if vmd.IoThread > 0 {
+		options = append(options, fmt.Sprintf("iothread=%d", vmd.IoThread))
+	}
+	if vmd.Replicate > 0 {
+		options = append(options, fmt.Sprintf("replicate=%d", vmd.Replicate))
+	}
+	if vmd.Ro > 0 {
+		options = append(options, fmt.Sprintf("ro=%d", vmd.Ro))
+	}
+	if vmd.Backup > 0 {
+		options = append(options, fmt.Sprintf("backup=%d", vmd.Backup))
+	}
+	if vmd.Ssd > 0 {
+		options = append(options, fmt.Sprintf("ssd=%d", vmd.Ssd))
+	}
+
+	return
 }
 
 func (v *VirtualMachine) Ping() error {
@@ -352,8 +479,8 @@ func (v *VirtualMachine) Config(options ...VirtualMachineOption) (*Task, error) 
 	err := v.client.Post(fmt.Sprintf("/nodes/%s/qemu/%d/config", v.Node, v.VMID), data, &upid)
 	return NewTask(upid, v.client), err
 }
-func (v *VirtualMachine) ConfigLoad() (err error) {
-	if nil == v.VirtualMachineConfig {
+func (v *VirtualMachine) ConfigLoad(force ...bool) (err error) {
+	if nil == v.VirtualMachineConfig || (len(force) > 0 && force[0]) {
 		err = v.client.Get(fmt.Sprintf("/nodes/%s/qemu/%d/config", v.Node, v.VMID), &v.VirtualMachineConfig)
 	}
 
@@ -533,16 +660,148 @@ func (v *VirtualMachine) Clone(name, target string) (newid int, task *Task, err 
 
 	return newid, NewTask(upid, v.client), nil
 }
-func (v *VirtualMachine) MoveDisk(disk, storage string) (task *Task, err error) {
+func (v *VirtualMachine) MoveDisk(diskName, storage string, format ...string) (task *Task, err error) {
 	var upid string
 
-	err = v.client.Post(fmt.Sprintf("/nodes/%s/qemu/%d/move_disk", v.Node, v.VMID), map[string]string{
-		"disk":    disk,
+	deskFormat := "qcow2"
+	if len(format) > 0 && "" != format[0] {
+		deskFormat = format[0]
+	}
+
+	err = v.client.Post(fmt.Sprintf("/nodes/%s/qemu/%d/move_disk", v.Node, v.VMID), map[string]interface{}{
+		"disk":    diskName,
 		"storage": storage,
+		"format":  deskFormat,
 	}, &upid)
 	if err != nil {
 		return
 	}
 
 	return NewTask(upid, v.client), nil
+}
+func (v *VirtualMachine) Resize(diskName string, sizeGb int64) (task *Task, err error) {
+	var upid string
+
+	err = v.client.Put(fmt.Sprintf("/nodes/%s/qemu/%d/resize", v.Node, v.VMID), map[string]interface{}{
+		"disk": diskName,
+		"size": fmt.Sprintf("%dG", sizeGb),
+	}, &upid)
+	if err != nil {
+		return
+	}
+
+	return NewTask(upid, v.client), nil
+}
+func (v *VirtualMachine) GetDisk(diskName string) (disk *VirtualMachineDisk, err error) {
+	err = v.ConfigLoad(true)
+	if nil != err {
+		return
+	}
+	switch {
+	case vmConfigRegexpSCSI.MatchString(diskName):
+		disks := v.VirtualMachineConfig.MergeSCSIs()
+		if tmp, ok := disks[diskName]; ok {
+			disk = tmp
+		}
+		break
+	case vmConfigRegexpSATA.MatchString(diskName):
+		disks := v.VirtualMachineConfig.MergeSATAs()
+		if tmp, ok := disks[diskName]; ok {
+			disk = tmp
+		}
+		break
+	case vmConfigRegexpIDE.MatchString(diskName):
+		disks := v.VirtualMachineConfig.MergeIDEs()
+		if tmp, ok := disks[diskName]; ok {
+			disk = tmp
+		}
+		break
+	case vmConfigRegexpUnused.MatchString(diskName):
+		disks := v.VirtualMachineConfig.MergeUnuseds()
+		if tmp, ok := disks[diskName]; ok {
+			disk = tmp
+		}
+		break
+
+	}
+
+	return
+}
+func (v *VirtualMachine) ChangeDisk(diskName string, disk *VirtualMachineDisk, storage string) (err error) {
+	if nil == disk {
+		err = fmt.Errorf("disk can not be nil")
+		return
+	}
+	needStart := false
+	var task *Task
+	if !v.IsStopped() {
+		needStart = true
+		task, err = v.Stop()
+		if nil != err {
+			return
+		}
+		err = task.WaitForComplete(36, 5)
+		if nil != err {
+			err = fmt.Errorf("vm stop faild: %v", err)
+			return
+		}
+	}
+
+	diskSizeGb := disk.SizeGb
+
+	existDisk, err := v.GetDisk(diskName)
+	if nil != err {
+		return
+	}
+	if nil != existDisk {
+		if "" == storage {
+			storage = existDisk.Storage
+		}
+		if existDisk.SizeGb > diskSizeGb {
+			diskSizeGb = existDisk.SizeGb
+		}
+	}
+	if "" == storage {
+		err = fmt.Errorf("storage is empty")
+		return
+	}
+
+	options := disk.ToConfigOptions()
+	options = append(options, fmt.Sprintf("%s:0", storage), fmt.Sprintf("import-from=%s", disk.SourcePath()))
+	task, err = v.Config(VirtualMachineOption{
+		Name:  diskName,
+		Value: strings.Join(options, ","),
+	})
+	if nil != err {
+		return
+	}
+	err = task.WaitForComplete(10, 3)
+	if nil != err {
+		err = fmt.Errorf("vm config disk faild: %v", err)
+		return
+	}
+
+	newDisk, err := v.GetDisk(diskName)
+	if nil != err {
+		return
+	}
+	if diskSizeGb > newDisk.SizeGb {
+		task, err = v.Resize(diskName, diskSizeGb)
+		err = task.WaitForComplete(10, 3)
+		if nil != err {
+			err = fmt.Errorf("vm disk %s resize faild: %v", diskName, err)
+			return
+		}
+	}
+
+	if needStart {
+		task, err = v.Start()
+		err = task.WaitForComplete(36, 5)
+		if nil != err {
+			err = fmt.Errorf("vm start faild: %v", err)
+			return
+		}
+	}
+
+	return
 }

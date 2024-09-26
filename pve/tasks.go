@@ -238,33 +238,54 @@ func (t *Task) Wait(interval, max time.Duration) error {
 	}
 }
 
-func (t *Task) WaitForCompleteStatus(timesNum int, steps ...int) (status bool, completed bool, err error) {
+func (t *Task) WaitForCompleteStatus(timesNum int, stepSeconds ...int) (status bool, completed bool, err error) {
 	step := 1
-	if len(steps) > 0 && steps[0] > 1 {
-		step = steps[0]
+	if len(stepSeconds) > 0 && stepSeconds[0] > 1 {
+		step = stepSeconds[0]
 	}
-	timeout := time.After(time.Duration(step*timesNum) * time.Second)
+	var timeout <-chan time.Time
 
 	for {
-		select {
-		case <-timeout:
-			return
-		default:
-			err = t.Ping()
-			if nil != err {
-				t.client.logger.DebugF("task %s ping error %+v", t.UPID, err)
-				break
-			}
-			completed = t.IsCompleted
-
-			if completed {
-				status = t.IsSuccessful
+		if timesNum > 0 {
+			select {
+			case <-timeout:
 				return
+
+			default:
+
 			}
+		}
+
+		err = t.Ping()
+		if nil != err {
+			t.client.logger.DebugF("task %s ping error %+v", t.UPID, err)
+			break
+		}
+		completed = t.IsCompleted
+
+		if completed {
+			status = t.IsSuccessful
+			if !status {
+				err = fmt.Errorf(t.ExitStatus)
+			}
+			return
 		}
 
 		time.Sleep(time.Duration(step) * time.Second)
 
 	}
+	return
+}
+func (t *Task) WaitForComplete(timesNum int, stepSeconds ...int) (err error) {
+
+	_, completed, err := t.WaitForCompleteStatus(timesNum, stepSeconds...)
+	if nil != err {
+		return
+	}
+	if !completed {
+		err = fmt.Errorf("task not completed")
+		return
+	}
+
 	return
 }
